@@ -141,28 +141,62 @@
 ;; 第2部分
 
 ; 思路: 
-; 1. 先把图放大3倍
-; 2. 然后再x、y轴同时平移一个单位，异或运算
-; 3. 最后识别出直线的模式（在两种直线同时存在的情况下）
+; 1. 先把图放大2倍
+; 2. 然后再x、y轴同时平移一个单位，与原图案异或运算
+; 3. 原图案x、y轴分别平移一个单位，两者异或运算
+; 4. 两重影进行异或运算
+; 5. 最后识别出直线的模式（与分离出斑渍相同），两种直线同时存在
 
-(defun code-sides (code width)
-  (labels ((hori-ash (code)
-             (logxor (ash code width) code))
-           (vert-ash (code)
-             (logxor (ash code 1) code)))
-    (let ((y-sides (ash (logcount (vert-ash (hori-ash code))) -1))
-          (x-sides (ash (logcount (hori-ash (vert-ash code))) -1)))
-      (+ y-sides x-sides))))
+(defun repeat-elem (lst)
+  (mapcan (lambda (x) (list x x)) lst))
+(defun repeat-chars (str)
+  (coerce (repeat-elem (coerce str 'list)) 'string))
 
-(defun process* (input)
-  (let* ((width (length (car input)))
-         (char-ls (input->char-ls input))
+(defun scale-input-2x2 (input)
+  (let* ((input-scale-width (mapcar #'repeat-chars input))
+         (input-scale-height (repeat-elem input-scale-width))) ; 没有复制字符串的环节,谨慎使用
+    input-scale-height))
+
+(defun code->input (code width) ; 性能绝对有损耗，但是没办法理解之前的代码了
+  (let ((str-ls nil) (remain code))
+    (loop while (> remain 0)
+          do (push (format nil (format nil "~a~db" #\~ width)
+                           (logand remain (1- (ash 1 width))))
+                   str-ls)
+             (setf remain (ash remain (- width))))
+    str-ls))
+
+(defun code-sides (code width) ; 如果瘢痕贯穿左右边界，则会过少估计
+  "仅针对输入被放大2倍处理后的数据"
+  (labels ((hori-ash (code) (ash code width))
+           (vert-ash (code) (ash code 1)))
+    (let* ((fringe-1 (logxor (vert-ash (hori-ash code)) code))
+           (fringe-2 (logxor (vert-ash code) (hori-ash code)))
+           (edges (logand fringe-1 fringe-2))
+           (fake-input (code->input edges width))
+           (code-ls (input->code-ls fake-input #\1))
+           )
+      ;(+ y-sides x-sides)
+      (length code-ls)
+      ;(values fringe-1 fringe-2)
+      ;edges
+      ;(vert-ash hori-ash code))
+      )))
+
+(defun process* (input) ; 超级慢，不过最后结果还是出来了，耶
+  (let* ((input (mapcar #'(lambda (str) (concatenate 'string str ".")) input))
+         (width (length (car input)))
+         (char-ls (remove #\. (input->char-ls input))) ; 增加padding之后去除
          (code-ls (mapcar #'(lambda (char) (input->code-ls input char))
                           char-ls))
          (code-ls* (reduce #'append code-ls))
          (area-ls (mapcar #'code-area code-ls*))
-         (sides-ls (mapcar #'(lambda (code) (code-sides code width)) code-ls*))
+         (sides-ls (mapcar #'(lambda (code) (code-sides ; 垃圾代码，转换环节太多
+                                             (car(input->code-ls
+                                                  (scale-input-2x2 (code->input code width))
+                                                  #\1))
+                                             (* 2 width)))
+                           code-ls*))
          (price-ls (mapcar #'* area-ls sides-ls))
          (price (reduce #'+ price-ls)))
-    price
-    code-ls*))
+    price))
