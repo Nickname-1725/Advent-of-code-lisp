@@ -48,4 +48,43 @@
 
 ;; 第2部分
 
+; 思路
+; 1. 代码2 4| 1 7| 7 5| 0 3| 1 7| 4 1| 5 5| 3 0|实际上可以直接读出来
+; 2. 这是一个循环，每次消耗A-reg，并且输出一次结果
+; 3. 翻译: loop with A = ???
+;               with out = nil
+;               while (not (eql A #b0))
+;               do (let* ((B (logand A #b111))
+;                         (C (logand (ash A (- (- #b111 B))) #b111)
+;                         (B (logxor C B)))
+;                    (push B out)
+;                    (ash A -3))
 
+(defun oct-ls () '(0 1 2 3 4 5 6 7))
+(defun guess-code (reg code &optional (non-0 nil))
+  "给定寄存器值，给定预期输出code，给出可行的最小的oct"
+  (let* ((oct-ls (oct-ls))
+         (out-ls (mapcar #'(lambda (oct)
+                             (let ((reg (logior reg oct)))
+                               `(,(logxor (logand (ash reg (- oct 7)) #b111) oct) ,oct)))
+                         oct-ls))
+         (valid-ls (if non-0 (remove 0 out-ls :test
+                                     #'(lambda (item x) (eql (cadr x) item)))
+                       out-ls))
+         (valid-ls (remove code valid-ls :test-not
+                           #'(lambda (item x) (eql item (car x)))))
+         (reg-ls (mapcar #'(lambda (x) (logior (cadr x) reg)) valid-ls)))
+    reg-ls))
+
+(defun guess-A-reg (out-ls-rev &optional (A-init 0) (head-p nil))
+  (cond
+    ((null out-ls-rev) (list A-init))
+    (t
+     (let* ((A A-init))
+       (setf A (ash A 3))
+       (let ((reg-ls (guess-code A (car out-ls-rev) head-p)))
+         (if head-p (setf head-p nil))
+         (mapcan #'(lambda (reg) (guess-A-reg (cdr out-ls-rev) reg))
+                 reg-ls))))))
+
+(format t "~a~%" (apply #'min (guess-A-reg (reverse *program*) 0 t)))
